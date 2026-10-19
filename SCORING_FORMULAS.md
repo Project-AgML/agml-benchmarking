@@ -1,10 +1,22 @@
 # AgML Dataset Scoring Formulas
 
-All scores are on a **0 – 10 scale** (10 = best).  
-Scores are computed entirely from the `report.json` output — no pipeline re-run needed.  
-All `clamp(x, 0, 10)` calls floor at 0 and ceil at 10.
+All scores are on a **0 to 10 scale** (10 = best). They are computed only from a run's `report.json`, so no pipeline re-run is needed.
 
----
+The reference implementation is `src/lib/scoring.ts` in the [project-agml.github.io](https://github.com/Project-AgML/project-agml.github.io) repository. This document matches it line for line.
+
+`clamp(x, 0, 10)` limits a value to the range 0 to 10.
+
+## Contents
+
+1. [JSON field references](#json-field-references)
+2. [Axis 1: Structural quality](#axis-1-structural-quality)
+3. [Axis 2: Content difficulty](#axis-2-content-difficulty)
+4. [Axis 3: Diversity and coverage](#axis-3-diversity-and-coverage)
+5. [Axis 4: Annotation reliability](#axis-4-annotation-reliability)
+6. [Overall score](#overall-score)
+7. [Implementation](#implementation)
+8. [Design notes](#design-notes)
+9. [Known limitations](#known-limitations)
 
 ## JSON field references
 
@@ -24,209 +36,134 @@ All `clamp(x, 0, 10)` calls floor at 0 and ceil at 10.
 | `accuracy` | `metrics.class_confusability.accuracy` |
 | `noise_rate` | `metrics.label_noise.estimated_noise_rate` |
 
-A metric is considered **available** if its key exists in `metrics` and does not contain `"skipped": true`.
+A metric is **available** if its key exists in `metrics` and it does not contain `"skipped": true`.
 
----
+**An axis needs every one of its metrics.** If any metric of an axis is missing, the whole axis is dropped. The one exception is content difficulty, which falls back to separability alone when the Phase 3 metrics are missing.
 
-## Axis 1 — Structural Quality
+## Axis 1: Structural quality
 
-> Requires Phase 1.
+> Needs class imbalance, exact duplicates, resolution consistency (Phase 1) and near duplicates (Phase 2).
 
-### 1a. Class Balance
+### 1a. Class balance
 
 $$S_{balance} = \text{clamp}(\text{entropy} \times 10,\ 0,\ 10)$$
 
-A normalized entropy of 1.0 means perfectly equal class sizes.
+A normalized entropy of 1 means all classes have the same size.
 
 ### 1b. Redundancy
 
-Combines exact and near-duplicate rates so cleaning only one type cannot inflate the score.
+Exact and near-duplicate rates are added together, so cleaning only one type cannot raise the score.
 
 $$S_{redundancy} = \text{clamp}\!\left(10 \times \left(1 - \frac{\text{exact\_rate} + \text{near\_rate}}{0.20}\right),\ 0,\ 10\right)$$
 
-Combined rate of 0% → 10. Combined rate ≥ 20% → 0.
+A combined rate of 0% gives 10, and 20% or more gives 0.
 
-### 1c. Cross-Split Contamination Penalty
+### 1c. Cross-split penalty
 
-Samples that appear in more than one split inflate test-set metrics.  
-This penalty is subtracted from the final Structural axis score.
+Images that appear in more than one split make test results look better than they are. This penalty is subtracted from the axis score.
 
 $$P_{cross} = \text{clamp}\!\left(\frac{(\text{cross\_split\_dups} + \text{cross\_split\_near}) \times 100}{\text{total\_images}},\ 0,\ 2\right)$$
 
-Maximum penalty is 2 points. More than 2% cross-split contamination incurs the full penalty.
+Each 1% of images in cross-split groups costs 1 point, up to 2 points. If `total_images` is 0, the penalty is 0.
 
-### 1d. Resolution Consistency
+### 1d. Resolution consistency
 
 $$S_{resolution} = \text{clamp}(10 \times (1 - \text{area\_cv}),\ 0,\ 10)$$
 
-CV = 0 → 10 (all images same resolution). CV ≥ 1.0 → 0.
+A CV of 0 (all images the same size) gives 10, and a CV of 1 or more gives 0.
 
-### Structural Quality Score
+### Structural quality score
 
 $$\boxed{Q_{structural} = \text{clamp}\!\left(0.40 \cdot S_{balance} + 0.35 \cdot S_{redundancy} + 0.25 \cdot S_{resolution} - P_{cross},\ 0,\ 10\right)}$$
 
----
+## Axis 2: Content difficulty
 
-## Axis 2 — Content Difficulty
+> Needs feature separability (Phase 2). Cartography and confusability (Phase 3) are used when available.
 
-> Requires Phase 2. Phase 3 metrics improve precision if available.
+### 2a. Feature separability
 
-### 2a. Feature Separability
+Silhouette (higher is better) and Davies-Bouldin (lower is better) are both used, so optimising one alone does not help. Each term is clamped before averaging.
 
-Uses both silhouette (higher = better separated) and Davies-Bouldin (lower = better separated) to make it harder to optimise for one alone.
+$$S_{separability} = \frac{\text{clamp}(\text{silhouette} \times 10,\ 0,\ 10) + \text{clamp}(10 - 3 \times \text{davies\_bouldin},\ 0,\ 10)}{2}$$
 
-$$S_{separability} = \text{clamp}\!\left(\frac{\text{silhouette} \times 10 + \text{clamp}(10 - \text{davies\_bouldin} \times 3,\ 0,\ 10)}{2},\ 0,\ 10\right)$$
+### 2b. Training difficulty *(Phase 3)*
 
-### 2b. Training Difficulty Balance *(Phase 3 only)*
-
-A healthy dataset has a spread of easy, ambiguous, and hard samples. Datasets with more than 50% hard-to-learn samples score 0; datasets with fewer than 5% hard samples score close to 10.
+Datasets with 50% or more hard samples score 0, and datasets with almost no hard samples score close to 10.
 
 $$S_{cartography} = \text{clamp}\!\left(10 \times \left(1 - \frac{\text{pct\_hard}}{50}\right),\ 0,\ 10\right)$$
 
-### 2c. Class Confusability *(Phase 3 only)*
+### 2c. Class confusability *(Phase 3)*
 
-High model accuracy on held-out data means classes are genuinely distinct.
+High accuracy of the reference ResNet-18 on the test split means the classes are easy to tell apart.
 
 $$S_{confusability} = \text{clamp}(\text{accuracy} \times 10,\ 0,\ 10)$$
 
-### Content Difficulty Score
+### Content difficulty score
 
-$$\boxed{Q_{difficulty} = \begin{cases} S_{separability} & \text{if Phase 3 not available} \\ 0.40 \cdot S_{separability} + 0.30 \cdot S_{cartography} + 0.30 \cdot S_{confusability} & \text{if Phase 3 available} \end{cases}}$$
+$$\boxed{Q_{difficulty} = \begin{cases} 0.40 \cdot S_{separability} + 0.30 \cdot S_{cartography} + 0.30 \cdot S_{confusability} & \text{if Phase 3 is available} \\ S_{separability} & \text{otherwise} \end{cases}}$$
 
----
+## Axis 3: Diversity and coverage
 
-## Axis 3 — Diversity & Coverage
+> Needs intra-class diversity (Phase 2).
 
-> Requires Phase 2.
+### 3a. Intra-class diversity
 
-### 3a. Intra-Class Visual Diversity
-
-DINOv2 mean cosine distances in practice range 0.05 (highly repetitive) to 0.5+ (highly diverse). Normalised against 0.4 as the reference ceiling.
+`mean_diversity` is the mean Euclidean distance from each image's DINOv2 embedding to its class centroid, averaged over classes. A value of 0.4 or more gives the full score.
 
 $$S_{diversity} = \text{clamp}\!\left(\frac{\text{mean\_diversity}}{0.4} \times 10,\ 0,\ 10\right)$$
 
-### Diversity & Coverage Score
+### 3b. Metadata coverage
+
+Metadata coverage is reported as frequency tables but is **not scored** yet.
+
+### Diversity score
 
 $$\boxed{Q_{diversity} = S_{diversity}}$$
 
----
+## Axis 4: Annotation reliability
 
-## Axis 4 — Annotation Reliability
+> Needs label noise (Phase 3).
 
-> Requires Phase 3.
+### 4a. Label noise
 
-### 4a. Label Noise
+The curve is steep near the bottom, so even a little noise lowers the score quickly. The base is clamped to the range 0 to 1 before the exponent, so the score is 0 once noise reaches 10%.
 
-Non-linear decay — early noise matters more than marginal noise at the high end.
+$$S_{noise} = \text{clamp}\!\left(10 \times \left(\text{clamp}\!\left(1 - \frac{\text{noise\_rate}}{0.10},\ 0,\ 1\right)\right)^{1.5},\ 0,\ 10\right)$$
 
-$$S_{noise} = \text{clamp}\!\left(10 \times \left(\max\!\left(0,\ 1 - \frac{\text{noise\_rate}}{0.10}\right)\right)^{1.5},\ 0,\ 10\right)$$
+0% noise gives 10, 5% gives about 3.5, and 10% or more gives 0.
 
-0% noise → 10. 5% noise → ~6.5. 10%+ noise → 0.  
-The exponent 1.5 prevents marginal gaming around the 10% boundary.
-
-### Annotation Reliability Score
+### Annotation reliability score
 
 $$\boxed{Q_{annotation} = S_{noise}}$$
 
----
+## Overall score
 
-## Overall Score
-
-Axis weights depend on which phases were run. Axes that require unavailable phases are excluded and their weight is redistributed equally across the remaining axes.
-
-| Phases run | Axes available | Effective weights (base / total) |
-|------------|---------------|----------------------------------|
-| Phase 1 only | Structural | 100% |
-| Phases 1 + 2 | Structural, Difficulty, Diversity | 37.5% / 31.25% / 31.25%  (0.30 + 0.25 + 0.25 = 0.80) |
-| Phases 1 + 2 + 3 | All four | **30% / 25% / 25% / 20%** |
+The overall score is a weighted mean of the available axes. If an axis is missing, it is dropped and the remaining weights are scaled up in proportion, so the score is never pulled down by a missing axis.
 
 $$\boxed{Q_{overall} = \frac{\sum_{i}\ w_i \cdot Q_i}{\sum_{i}\ w_i}}$$
 
-where the sum runs only over axes whose required phases are present in `phases_completed`.
+| Axes available | Effective weights |
+|----------------|-------------------|
+| All four | **Structural 30%, Difficulty 25%, Diversity 25%, Annotation 20%** |
+| Structural, Difficulty, Diversity (no Phase 3) | 37.5%, 31.25%, 31.25% |
+| Structural, Diversity (single-class data, such as iNatAg) | 54.5%, 45.5% |
 
----
+All scores are rounded to one decimal place. Overall scores of 7.5 and above are shown as good, 5.0 to 7.5 as fair, and below 5.0 as needing attention.
 
-## Implementation notes
+## Design notes
 
-```js
-function clamp(x, min, max) {
-  return Math.min(Math.max(x, min), max);
-}
+- **Duplicate cleaning:** exact and near-duplicate rates are added, so removing only exact duplicates does not raise the score.
+- **Cross-split leakage:** penalised on its own, so it cannot be hidden by doing well elsewhere.
+- **Diversity and duplication:** removing images to lower the duplicate rate also lowers diversity, which creates a natural trade-off.
+- **Silhouette and Davies-Bouldin:** both are used, so optimising one alone moves the other the wrong way.
+- **Label noise exponent:** the 1.5 exponent makes small changes near the 10% boundary worth very little.
+- **Fixed split seed:** the split seed (42) is published, so the test set cannot be picked to raise confusability accuracy.
 
-function score(report) {
-  const m = report.metrics;
-  const phases = report.phases_completed;
+## Known limitations
 
-  const has = (key) => key in m && !m[key]?.skipped;
-  const p1 = phases.includes(1);
-  const p2 = phases.includes(2);
-  const p3 = phases.includes(3);
+These come from running the scores on 809 datasets and comparing them with model performance (see [IMAGE_CLASSIFICATION.md](IMAGE_CLASSIFICATION.md)).
 
-  const axes = {};
-
-  // Structural Quality
-  if (p1) {
-    const balance    = clamp(m.class_imbalance.normalized_entropy * 10, 0, 10);
-    const combined   = m.exact_duplicate.exact_duplicate_rate + m.near_duplicate.near_duplicate_rate;
-    const redundancy = clamp(10 * (1 - combined / 0.20), 0, 10);
-    const resolution = clamp(10 * (1 - m.resolution_consistency.area_cv), 0, 10);
-    const crossSplit = m.exact_duplicate.cross_split_duplicates + m.near_duplicate.cross_split_near_duplicates;
-    const penalty    = clamp((crossSplit * 100) / m.exact_duplicate.total_images, 0, 2);
-    axes.structural  = clamp(0.40 * balance + 0.35 * redundancy + 0.25 * resolution - penalty, 0, 10);
-  }
-
-  // Content Difficulty
-  if (p2) {
-    const sil  = clamp(m.feature_separability.silhouette_score * 10, 0, 10);
-    const db   = clamp(10 - m.feature_separability.davies_bouldin_index * 3, 0, 10);
-    const sep  = (sil + db) / 2;
-    if (p3) {
-      const cart = clamp(10 * (1 - m.dataset_cartography.pct_hard / 50), 0, 10);
-      const conf = clamp(m.class_confusability.accuracy * 10, 0, 10);
-      axes.difficulty = 0.40 * sep + 0.30 * cart + 0.30 * conf;
-    } else {
-      axes.difficulty = sep;
-    }
-  }
-
-  // Diversity & Coverage
-  if (p2) {
-    axes.diversity = clamp(m.intra_class_diversity.mean_diversity / 0.4 * 10, 0, 10);
-  }
-
-  // Annotation Reliability
-  if (p3) {
-    const base = Math.max(0, 1 - m.label_noise.estimated_noise_rate / 0.10);
-    axes.annotation = clamp(10 * Math.pow(base, 1.5), 0, 10);
-  }
-
-  // Overall
-  const weights = { structural: 0.30, difficulty: 0.25, diversity: 0.25, annotation: 0.20 };
-  let weightedSum = 0, totalWeight = 0;
-  for (const [axis, score] of Object.entries(axes)) {
-    if (score == null || isNaN(score)) continue;
-    weightedSum += score * weights[axis];
-    totalWeight += weights[axis];
-  }
-  const overall = totalWeight > 0 ? weightedSum / totalWeight : null;
-
-  return {
-    overall:    overall !== null ? Math.round(overall * 10) / 10 : null,
-    structural: axes.structural  != null ? Math.round(axes.structural  * 10) / 10 : null,
-    difficulty: axes.difficulty  != null ? Math.round(axes.difficulty  * 10) / 10 : null,
-    diversity:  axes.diversity   != null ? Math.round(axes.diversity   * 10) / 10 : null,
-    annotation: axes.annotation  != null ? Math.round(axes.annotation  * 10) / 10 : null,
-  };
-}
-```
-
----
-
-## Anti-gaming notes
-
-- **Duplicate cleaning** — exact and near-duplicate rates are summed, so removing only exact duplicates while keeping near-duplicates does not improve the score.
-- **Cross-split contamination** — penalised separately and cannot be hidden by improving other components.
-- **Diversity vs. duplication** — removing samples to lower the duplicate rate also reduces `mean_diversity`, creating a natural trade-off.
-- **Silhouette + Davies-Bouldin** — both are included in the separability formula. Optimising for one alone moves the other in the wrong direction.
-- **Noise rate exponent** — the 1.5 exponent in the annotation score makes marginal gaming near the 10% boundary worth very little.
-- **Split seed is fixed and published** — the test set composition is locked, so accuracy on the confusability metric cannot be inflated by controlling which samples land in the test set.
+- **Hand-set weights:** the axis weights and cut-offs were chosen by hand and were not fitted to any model results.
+- **Diversity saturates:** the 0.4 ceiling is too low for DINOv2 embeddings. 73 of 82 curated datasets and all iNatAg subsets are above it, so the diversity axis is 10 for almost every dataset.
+- **Almost no hard samples:** cartography uses the model's highest softmax probability rather than the probability of the true label, so very few images are marked hard. Only 1 of 82 curated datasets has any.
+- **Structural axis:** on 20 test datasets it showed no link with fine-tuned performance, while content difficulty and annotation reliability did.

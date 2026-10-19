@@ -117,6 +117,7 @@ class AgMLBenchmarkPipeline:
         metadata_cols: Optional[List[str]] = None,
         compound_label_cols: Optional[List[str]] = None,
         cfg: Optional[PipelineConfig] = None,
+        show_banner: bool = True,
     ) -> None:
         """
         Parameters
@@ -152,8 +153,26 @@ class AgMLBenchmarkPipeline:
         self.metadata_cols = metadata_cols
         self.compound_label_cols = compound_label_cols
         self.cfg = cfg if cfg is not None else PipelineConfig.load()
+        self.show_banner = show_banner
+        self._writer = None   # created lazily so the timestamp is stable
 
     # ── Public API ────────────────────────────────────────────────────────────
+
+    def _get_writer(self):
+        """Return the ReportWriter, creating it on first call."""
+        if self._writer is None:
+            self._writer = ReportWriter(
+                dataset_name=self.dataset_name,
+                output_dir=self.cfg.output_dir,
+            )
+        return self._writer
+
+    def report_path(self) -> str:
+        """
+        Return the path where the JSON report will be written.
+        Safe to call before run() — the timestamp is fixed on first call.
+        """
+        return self._get_writer().path()
 
     def run(self, phases: Optional[List[int]] = None) -> str:
         """
@@ -173,17 +192,15 @@ class AgMLBenchmarkPipeline:
         if phases is None:
             phases = [1]
 
-        writer = ReportWriter(
-            dataset_name=self.dataset_name,
-            output_dir=self.cfg.output_dir,
-        )
+        writer = self._get_writer()
 
         # Embed key reproducibility fields directly in the report so the file
         # is self-contained, and persist the full config alongside it.
         writer.set_reproducibility(self.cfg)
         self.cfg.to_json(os.path.join(writer.run_dir, "config_used.json"))
 
-        _banner(self.dataset_name, phases, writer.path())
+        if self.show_banner:
+            _banner(self.dataset_name, phases, writer.path())
 
         adapter = DatasetAdapter(
             dataset_name=self.dataset_name,
@@ -296,12 +313,15 @@ class AgMLBenchmarkPipeline:
                 max_silhouette_samples=self.cfg.max_silhouette_samples,
             )
             writer.add("feature_separability", result)
-            print(
-                f"  [✓] feature_separability   "
-                f"silhouette={result['silhouette_score']}  "
-                f"({result['silhouette_interpretation']})  "
-                f"davies_bouldin={result['davies_bouldin_index']}"
-            )
+            if result.get("skipped"):
+                print(f"  [–] feature_separability   skipped ({result['reason']})")
+            else:
+                print(
+                    f"  [✓] feature_separability   "
+                    f"silhouette={result['silhouette_score']}  "
+                    f"({result['silhouette_interpretation']})  "
+                    f"davies_bouldin={result['davies_bouldin_index']}"
+                )
 
             result = IntraClassDiversityMetric().run(
                 embeddings=embeddings,
@@ -327,10 +347,19 @@ class AgMLBenchmarkPipeline:
                 val_idx=val_idx,
                 test_idx=test_idx,
                 run_dir=writer.run_dir,
+                dataset_name=self.dataset_name,
             )
 
         # ── Phase 3 ───────────────────────────────────────────────────────────
-        if 3 in phases:
+        if 3 in phases and schema.num_classes < 2:
+            print("\n── Phase 3: Skipped — requires ≥ 2 classes ──\n")
+            skip_reason = f"Dataset has only {schema.num_classes} class — Phase 3 metrics require ≥ 2."
+            writer.add("dataset_cartography",  {"skipped": True, "reason": skip_reason})
+            writer.add("class_confusability",  {"skipped": True, "reason": skip_reason})
+            writer.add("label_noise",          {"skipped": True, "reason": skip_reason})
+            writer.complete_phase(3)
+
+        if 3 in phases and schema.num_classes >= 2:
             print("\n── Phase 3: Training Dynamics + Annotation Reliability ──\n")
 
             # Phase 2 embeddings are required for Label Noise — load from cache
@@ -407,9 +436,7 @@ class AgMLBenchmarkPipeline:
 
             writer.complete_phase(3)
 
-        print(f"\n{'─' * 60}")
-        print(f"  Report → {writer.path()}")
-        print(f"{'─' * 60}\n")
+        print(f"\n  ✓ Successfully generated report at: {writer.path()}")
 
         return writer.path()
 
