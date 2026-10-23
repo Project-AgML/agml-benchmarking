@@ -1,6 +1,6 @@
 # Complete list for the Experiment 2 environment (kept separate because vLLM brings its own torch build).
 # Install vLLM first so it picks torch, then the rest:
-#   uv pip install "vllm>=0.29.0" && uv pip install -r experiments/requirements_zero_shot.txt
+#   uv pip install "vllm>=0.29.0" && uv pip install -r experiments/pipelines/zero_shot/requirements.txt
 # Gemma 4 needs transformers 5.5 or later, Qwen 3.5 needs 5.2 or later.
 # vLLM 0.19 and older pin transformers below 5, so use a recent release.
 # FP8 weights need an Ada or Hopper GPU.

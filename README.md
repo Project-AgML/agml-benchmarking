@@ -63,16 +63,15 @@ agml-benchmarking/
 │       ├── submit_job.py             # submits one SLURM job for all datasets
 │       └── run_benchmark.sbatch      # SLURM job template (FARM @ UC Davis)
 ├── experiments/
-│   ├── config.yaml                   # shared settings and the 20 evaluation datasets
+│   ├── config.yaml                   # shared settings, datasets and per-experiment settings
+│   ├── pipelines/                    # one folder per experiment, with its scripts, sbatch and requirements
+│   │   ├── fine_tuning/              # Experiment 1: ViT-Small and DINOv2-Small fine-tuning
+│   │   ├── zero_shot/                # Experiment 2: SigLIP, Gemma 4 and Qwen 3.5 (own vLLM environment)
+│   │   └── encoder_sensitivity/      # benchmark metrics under different image encoders
 │   ├── common/                       # dataset preparation, metrics, reproducibility helpers
-│   ├── fine_tuning/                  # Experiment 1: ViT-Small and DINOv2-Small fine-tuning
-│   ├── zero_shot/                    # Experiment 2: SigLIP, Gemma 4 and Qwen 3.5
-│   ├── fine_tuning.sbatch
-│   ├── zero_shot.sbatch
-│   ├── requirements.txt              # extra packages for Experiment 1
-│   ├── requirements_zero_shot.txt    # full environment for Experiment 2 (vLLM)
-│   ├── results/                      # per-run JSON results and summaries
-│   └── figures/                      # fine-tuning and zero-shot figures
+│   ├── results/                      # one subfolder of results per experiment
+│   ├── figures/                      # one subfolder of figures per experiment, plus publication/
+│   └── logs/                         # SLURM logs
 ├── IMAGE_CLASSIFICATION.md           # results and experiments write-up
 ├── SCORING_FORMULAS.md               # metric formulas, axis weights, overall score
 └── README.md
@@ -259,9 +258,9 @@ Two experiments test whether the quality scores predict model performance on 20 
 Fine-tunes ViT-Small (AugReg) and DINOv2-Small from timm on each dataset and reports test macro F1.
 
 ```bash
-sbatch experiments/fine_tuning.sbatch
+sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch
 # One dataset and model only
-sbatch experiments/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
+sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
 ```
 
 ### Experiment 2: zero-shot
@@ -269,8 +268,8 @@ sbatch experiments/fine_tuning.sbatch --datasets bean_disease_uganda --models vi
 Classifies test images with SigLIP, Gemma 4 31B and Qwen 3.5 27B without any training. It needs its own environment because vLLM brings its own PyTorch build:
 
 ```bash
-uv pip install "vllm>=0.29.0" && uv pip install -r experiments/requirements_zero_shot.txt
-sbatch experiments/zero_shot.sbatch
+uv pip install "vllm>=0.29.0" && uv pip install -r experiments/pipelines/zero_shot/requirements.txt
+sbatch experiments/pipelines/zero_shot/zero_shot.sbatch
 ```
 
 ### Shared options

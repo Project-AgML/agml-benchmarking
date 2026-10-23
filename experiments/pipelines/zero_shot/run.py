@@ -5,9 +5,9 @@ Each model runs in its own process (zero_shot.sbatch loops over them), because
 vLLM does not reliably give GPU memory back when a second model is loaded.
 
 Usage (from repo root):
-	uv run python -m experiments.zero_shot.run --models siglip_so400m
-	uv run python -m experiments.zero_shot.run --models qwen_3_5_27b --datasets bean_disease_uganda
-	uv run python -m experiments.zero_shot.run --prefetch-only    # login node, downloads weights + datasets
+	uv run python -m experiments.pipelines.zero_shot.run --models siglip_so400m
+	uv run python -m experiments.pipelines.zero_shot.run --models qwen_3_5_27b --datasets bean_disease_uganda
+	uv run python -m experiments.pipelines.zero_shot.run --prefetch-only    # login node, downloads weights + datasets
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from experiments.common import (
 from experiments.common.class_names import build_display_class_names
 from experiments.common.classification_metrics import compute_classification_metrics
 from experiments.common.output_files import write_json
-from experiments.zero_shot.results_summary import rebuild_summary
+from experiments.pipelines.zero_shot.results_summary import rebuild_summary
 
 SUPPORTED_MODEL_TYPES = ("siglip", "vision_language_model")
 IMAGE_READ_CHUNK = 256
@@ -77,10 +77,10 @@ def select_models(zero_shot_settings: Dict[str, Any], selected_model_names: Opti
 def build_classifier(model_settings: Dict[str, Any], zero_shot_settings: Dict[str, Any], random_seed: int):
 	# Imported here so a SigLIP run does not need vLLM installed, and the other way round
 	if model_settings["model_type"] == "siglip":
-		from experiments.zero_shot.siglip_classifier import SiglipZeroShotClassifier
+		from experiments.pipelines.zero_shot.siglip_classifier import SiglipZeroShotClassifier
 
 		return SiglipZeroShotClassifier(model_settings)
-	from experiments.zero_shot.vlm_classifier import VisionLanguageZeroShotClassifier
+	from experiments.pipelines.zero_shot.vlm_classifier import VisionLanguageZeroShotClassifier
 
 	return VisionLanguageZeroShotClassifier(model_settings, zero_shot_settings["vision_language_prompt"], random_seed)
 
@@ -100,7 +100,7 @@ def predict_split(classifier, hf_split, image_column: str, label_column: str):
 
 
 def run_single_dataset(classifier, prepared_dataset: PreparedDataset, model_settings: Dict[str, Any], save_predictions: bool, run_output_dir: Path) -> Dict[str, Any]:
-	from experiments.zero_shot.vlm_classifier import INVALID_PREDICTION
+	from experiments.pipelines.zero_shot.vlm_classifier import INVALID_PREDICTION
 
 	schema = prepared_dataset.schema
 	display_class_names = build_display_class_names(schema.label_names, prepared_dataset.entry.class_name_overrides)

@@ -12,11 +12,11 @@
 #SBATCH --error=experiments/logs/%x_%j.err
 
 # Submit from the repo root. Extra arguments are passed straight to the runner:
-#   sbatch experiments/fine_tuning.sbatch
-#   sbatch experiments/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
+#   sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch
+#   sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
 #
 # Compute nodes do not have reliable internet, so cache datasets and weights on the login node first:
-#   uv run python -m experiments.fine_tuning.run --prefetch-only
+#   uv run python -m experiments.pipelines.fine_tuning.run --prefetch-only
 
 module load cuda/12
 
@@ -36,7 +36,7 @@ echo "Node              : $(hostname)"
 echo "Started           : $(date)"
 echo "---------------------------------------------------------"
 
-uv run python -m experiments.fine_tuning.run --config "$REPO_ROOT/experiments/config.yaml" "$@"
+uv run python -m experiments.pipelines.fine_tuning.run --config "$REPO_ROOT/experiments/config.yaml" "$@"
 
 echo "---------------------------------------------------------"
 echo "Finished : $(date)"

@@ -108,3 +108,66 @@ zero_shot:
           max_model_len: 8192
           gpu_memory_utilization: 0.95
           max_image_side: 896
+
+encoder_sensitivity:
+    experiment_name: "encoder_sensitivity"
+    benchmark_results_root: /group/jmearlesgrp/uchandar/agml-benchmarking/benchmark_outputs
+    dataset_list: experiments/pipelines/encoder_sensitivity/datasets.yaml
+    skip_completed_runs: true
+    save_embeddings: true
+    near_duplicate_thresholds: [0.95, 0.98, 0.99]
+    faiss_ivf_threshold: 100000
+    max_silhouette_samples: 10000
+    label_noise_cv_folds: 5
+    smoke_test_images: 16
+    baseline_encoder: "dinov2_base"
+    analysis:
+        figure_folder: experiments/figures/encoder_sensitivity
+        bootstrap_repeats: 2000
+        bootstrap_seed: 0
+        consistent_spearman: 0.8
+        partly_consistent_spearman: 0.6
+        heatmap_metrics: ["silhouette", "davies_bouldin", "intra_class_diversity", "label_noise_rate", "near_duplicate_rate_0.98"]
+    scoring:
+        silhouette_scale: 10
+        davies_bouldin_slope: 3
+        diversity_full_score: 0.4
+        noise_zero_score: 0.1
+        noise_exponent: 1.5
+    encoders:
+        - name: "dinov2_base"
+          library: "transformers_cls"
+          model_id: "facebook/dinov2-base"
+          description: "Self-supervised, Meta (current benchmark encoder)"
+        - name: "dinov2_large"
+          library: "transformers_cls"
+          model_id: "facebook/dinov2-large"
+          description: "Self-supervised, Meta, larger size"
+        - name: "dinov3_base"
+          library: "transformers_cls"
+          model_id: "facebook/dinov3-vitb16-pretrain-lvd1689m"
+          description: "Self-supervised, Meta, newer generation"
+        - name: "clip_vit_large"
+          library: "transformers_clip"
+          model_id: "openai/clip-vit-large-patch14"
+          description: "Vision-language, OpenAI"
+        - name: "siglip2_so400m"
+          library: "transformers_clip"
+          model_id: "google/siglip2-so400m-patch14-384"
+          batch_size: 32
+          description: "Vision-language, Google"
+        - name: "pe_core_large"
+          library: "open_clip"
+          model_id: "PE-Core-L-14-336"
+          pretrained: "meta"
+          batch_size: 32
+          description: "Vision-language, Meta Perception Encoder"
+        - name: "vit_base_in21k"
+          library: "timm"
+          model_id: "vit_base_patch16_224.augreg_in21k"
+          description: "Supervised on ImageNet-21k labels"
+        - name: "bioclip2"
+          library: "open_clip"
+          model_id: "hf-hub:imageomics/bioclip-2"
+          batch_size: 32
+          description: "Vision-language, trained on species images (TreeOfLife)"

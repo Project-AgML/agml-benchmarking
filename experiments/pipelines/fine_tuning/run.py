@@ -3,9 +3,9 @@ Experiment 1: fine-tune every configured model on every configured dataset and
 score macro F1 on the held-out test split.
 
 Usage (from repo root):
-	uv run python -m experiments.fine_tuning.run
-	uv run python -m experiments.fine_tuning.run --datasets bean_disease_uganda --models vit_small
-	uv run python -m experiments.fine_tuning.run --prefetch-only    # run on the login node first
+	uv run python -m experiments.pipelines.fine_tuning.run
+	uv run python -m experiments.pipelines.fine_tuning.run --datasets bean_disease_uganda --models vit_small
+	uv run python -m experiments.pipelines.fine_tuning.run --prefetch-only    # run on the login node first
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ from experiments.common import (
 from experiments.common.reproducibility import seed_dataloader_worker
 from experiments.common.classification_metrics import compute_classification_metrics
 from experiments.common.output_files import write_json
-from experiments.fine_tuning.image_transforms import build_evaluation_transform, build_training_transform
-from experiments.fine_tuning.model_factory import (
+from experiments.pipelines.fine_tuning.image_transforms import build_evaluation_transform, build_training_transform
+from experiments.pipelines.fine_tuning.model_factory import (
 	build_classifier,
 	download_pretrained_weights,
 	get_normalization_statistics,
 )
-from experiments.fine_tuning.results_summary import rebuild_summary
-from experiments.fine_tuning.trainer import FineTuningTrainer
+from experiments.pipelines.fine_tuning.results_summary import rebuild_summary
+from experiments.pipelines.fine_tuning.trainer import FineTuningTrainer
 
 
 def log(message: str = "") -> None:
