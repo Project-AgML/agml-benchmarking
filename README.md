@@ -37,45 +37,35 @@ Datasets come from Hugging Face (`Project-AgML/...`) or the agml library (`iNatA
 
 ```
 agml-benchmarking/
+├── core/                             # shared by benchmark and experiments, imports neither
+│   ├── data/                         # dataset loading (HF + agml), stratified 70 / 15 / 15 splits
+│   └── metrics/                      # structural, diversity, difficulty and annotation metrics
 ├── benchmark/
-│   ├── app.py                        # entry point: CLI and programmatic API
+│   ├── pipeline.py                   # AgMLBenchmarkPipeline: CLI and programmatic API
+│   ├── run_all.py                    # runs every dataset in slurm/datasets.yaml
 │   ├── config.py                     # PipelineConfig dataclass
-│   ├── requirements.txt
-│   ├── configs/
-│   │   └── config.json               # infrastructure settings (seeds, thresholds, paths)
-│   ├── core/
-│   │   ├── dataset_adapter.py        # dataset loading (HF + agml) and schema detection
-│   │   ├── split_manager.py          # stratified 70 / 15 / 15 splits with _orig_idx tracking
-│   │   ├── embedding_engine.py       # DINOv2 inference and on-disk embedding cache
-│   │   ├── reference_trainer.py      # ResNet-18 training for Phase 3 metrics
-│   │   └── umap_projector.py         # 2D UMAP projection for visualisation
-│   ├── metrics/
-│   │   ├── structural/               # class imbalance, exact and near duplicates, resolution
-│   │   ├── diversity/                # intra-class diversity, metadata coverage
-│   │   ├── difficulty/               # feature separability, cartography, class confusability
-│   │   └── annotation/               # label noise (cleanlab)
-│   ├── output/
-│   │   └── writer.py                 # incremental JSON report writer
+│   ├── components/                   # DINOv2 embeddings, ResNet-18 reference training, UMAP
+│   ├── output/                       # incremental JSON report writer
+│   ├── slurm/                        # sbatch, config.json, datasets.yaml, submit_job.py, requirements.txt
+│   ├── results/                      # one folder per dataset run
 │   ├── figures/                      # benchmark figures and per-dataset metrics CSV
-│   └── execution_scripts/
-│       ├── datasets.yaml             # dataset registry: what to run and how
-│       ├── run_all.py                # runs every dataset in datasets.yaml
-│       ├── submit_job.py             # submits one SLURM job for all datasets
-│       └── run_benchmark.sbatch      # SLURM job template (FARM @ UC Davis)
+│   └── logs/                         # SLURM logs
 ├── experiments/
-│   ├── config.yaml                   # shared settings, datasets and per-experiment settings
-│   ├── pipelines/                    # one folder per experiment, with its scripts, sbatch and requirements
+│   ├── pipelines/                    # Python code only, one folder per experiment
 │   │   ├── fine_tuning/              # Experiment 1: ViT-Small and DINOv2-Small fine-tuning
-│   │   ├── zero_shot/                # Experiment 2: SigLIP, Gemma 4 and Qwen 3.5 (own vLLM environment)
+│   │   ├── zero_shot/                # Experiment 2: SigLIP, Gemma 4 and Qwen 3.5
 │   │   └── encoder_sensitivity/      # benchmark metrics under different image encoders
-│   ├── common/                       # dataset preparation, metrics, reproducibility helpers
-│   ├── results/                      # one subfolder of results per experiment
-│   ├── figures/                      # one subfolder of figures per experiment, plus publication/
+│   ├── common/                       # config loading, dataset preparation, metrics, reproducibility
+│   ├── slurm/                        # shared.yaml, plus one folder per experiment: sbatch, config.yaml, requirements.txt
+│   ├── results/                      # one subfolder per experiment
+│   ├── figures/                      # one subfolder per experiment, plus publication/
 │   └── logs/                         # SLURM logs
 ├── IMAGE_CLASSIFICATION.md           # results and experiments write-up
 ├── SCORING_FORMULAS.md               # metric formulas, axis weights, overall score
 └── README.md
 ```
+
+Every command and sbatch file runs from the repo root.
 
 ## Benchmark pipeline
 
@@ -128,10 +118,10 @@ For compound labels (for example crop type and disease), pass `--compound-label-
 
 ### Configuration
 
-Infrastructure settings live in `benchmark/configs/config.json` and are found at startup in this order:
+Infrastructure settings live in `benchmark/slurm/config.json` and are found at startup in this order:
 
 1. The `$AGML_CONFIG` environment variable
-2. `benchmark/config.json` in the working directory
+2. `benchmark/slurm/config.json`
 3. Built-in defaults
 
 Key settings:
@@ -183,31 +173,31 @@ AutoModel.from_pretrained('facebook/dinov2-base')
 
 ```bash
 # Simple
-python -m benchmark.app \
+python -m benchmark.pipeline \
     --dataset Project-AgML/rice_leaf_disease_classification \
     --phases 1 2 3
 
 # If the HF dataset has several configurations (e.g. default, train, raw)
-python -m benchmark.app \
+python -m benchmark.pipeline \
     --dataset Project-AgML/watermelon_disease_classification \
     --hf-config-name raw \
     --phases 1 2 3
 
 # Compound label (joins crop_type and label into one class)
-python -m benchmark.app \
+python -m benchmark.pipeline \
     --dataset Project-AgML/crop_pest_disease_classification \
     --compound-label-cols label crop \
     --phases 1 2 3
 
 # iNatAg dataset via agml
-python -m benchmark.app \
+python -m benchmark.pipeline \
     --dataset iNatAg-mini/acacia_auriculiformis \
     --phases 1 2 3
 ```
 
 #### Many datasets
 
-List the datasets in `benchmark/execution_scripts/datasets.yaml`. Each entry inherits from `defaults` and can override schema fields:
+List the datasets in `benchmark/slurm/datasets.yaml`. Each entry inherits from `defaults` and can override schema fields:
 
 ```yaml
 defaults:
@@ -227,18 +217,19 @@ datasets:
 Then submit one SLURM job for all of them, or run them locally:
 
 ```bash
-python benchmark/execution_scripts/submit_job.py   # SLURM
-python benchmark/execution_scripts/run_all.py      # local
+python benchmark/slurm/submit_job.py              # SLURM, logs in a dated folder
+sbatch benchmark/slurm/run_benchmark.sbatch        # SLURM, logs in benchmark/logs
+python -m benchmark.run_all                        # local
 ```
 
 The datasets run one after another in a single job (48 hour limit, 64 GB GPU). If one fails, the error goes to the `.err` log and the next one starts. Logs are written to `benchmark/logs/YYYY-MM-DD/`.
 
 ### Output
 
-Each run writes to `benchmark_results/<dataset_name>/`:
+Each run writes to `benchmark/results/<dataset_name>/`:
 
 ```
-benchmark_results/rice_leaf_disease_classification/
+benchmark/results/rice_leaf_disease_classification/
 ├── result.json          # all metric outputs and reproducibility metadata
 ├── config_used.json     # exact config snapshot for the run
 └── embeddings/
@@ -251,16 +242,16 @@ Results are saved as each phase finishes, so if a job is killed, the completed p
 
 ## Experiments
 
-Two experiments test whether the quality scores predict model performance on 20 curated datasets. Both use the same splits as the benchmark. Settings and the dataset list are in `experiments/config.yaml`.
+Two experiments test whether the quality scores predict model performance on 20 curated datasets. Both use the same splits as the benchmark. Shared settings and the dataset list are in `experiments/slurm/shared.yaml`; each experiment's own settings, sbatch file and requirements are in `experiments/slurm/<experiment>/`.
 
 ### Experiment 1: fine-tuning
 
 Fine-tunes ViT-Small (AugReg) and DINOv2-Small from timm on each dataset and reports test macro F1.
 
 ```bash
-sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch
+sbatch experiments/slurm/fine_tuning/fine_tuning.sbatch
 # One dataset and model only
-sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
+sbatch experiments/slurm/fine_tuning/fine_tuning.sbatch --datasets bean_disease_uganda --models vit_small
 ```
 
 ### Experiment 2: zero-shot
@@ -268,8 +259,8 @@ sbatch experiments/pipelines/fine_tuning/fine_tuning.sbatch --datasets bean_dise
 Classifies test images with SigLIP, Gemma 4 31B and Qwen 3.5 27B without any training. It needs its own environment because vLLM brings its own PyTorch build:
 
 ```bash
-uv pip install "vllm>=0.29.0" && uv pip install -r experiments/pipelines/zero_shot/requirements.txt
-sbatch experiments/pipelines/zero_shot/zero_shot.sbatch
+uv pip install "vllm>=0.29.0" && uv pip install -r experiments/slurm/zero_shot/requirements.txt
+sbatch experiments/slurm/zero_shot/zero_shot.sbatch
 ```
 
 ### Shared options
@@ -278,10 +269,10 @@ Both runners accept the same flags:
 
 | Flag | Meaning |
 |---|---|
-| `--config` | Path to a config file (default `experiments/config.yaml`) |
+| `--config` | Path to the experiment's config file (default `experiments/slurm/<experiment>/config.yaml`) |
 | `--datasets` | Comma separated dataset names to run |
 | `--models` | Comma separated model names to run |
-| `--prefetch-only` | Download datasets and weights, then exit (run this on the login node) |
+| `--prefetch-only` | Only download datasets and weights into the cache, then exit (run this on the login node) |
 
 Results are written to `experiments/results/`, and the figures used in [IMAGE_CLASSIFICATION.md](IMAGE_CLASSIFICATION.md) are in `experiments/figures/`.
 

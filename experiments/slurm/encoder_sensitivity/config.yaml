@@ -1,0 +1,159 @@
+# encoder_sensitivity settings. Merged with experiments/slurm/shared.yaml at load time.
+# YAML does not allow tabs, so this file uses 4 spaces per level.
+# Relative paths are resolved from the repo root.
+
+encoder_sensitivity:
+    experiment_name: "encoder_sensitivity"
+    benchmark_results_root: benchmark/results
+    skip_completed_runs: true
+    save_embeddings: true
+    near_duplicate_thresholds: [0.95, 0.98, 0.99]
+    faiss_ivf_threshold: 100000
+    max_silhouette_samples: 10000
+    label_noise_cv_folds: 5
+    smoke_test_images: 16
+    baseline_encoder: "dinov2_base"
+    analysis:
+        figure_folder: experiments/figures/encoder_sensitivity
+        bootstrap_repeats: 2000
+        bootstrap_seed: 0
+        consistent_spearman: 0.8
+        partly_consistent_spearman: 0.6
+        heatmap_metrics: ["silhouette", "davies_bouldin", "intra_class_diversity", "label_noise_rate", "near_duplicate_rate_0.98"]
+    scoring:
+        silhouette_scale: 10
+        davies_bouldin_slope: 3
+        diversity_full_score: 0.4
+        noise_zero_score: 0.1
+        noise_exponent: 1.5
+    encoders:
+        - name: "dinov2_base"
+          library: "transformers_cls"
+          model_id: "facebook/dinov2-base"
+          description: "Self-supervised, Meta (current benchmark encoder)"
+        - name: "dinov2_large"
+          library: "transformers_cls"
+          model_id: "facebook/dinov2-large"
+          description: "Self-supervised, Meta, larger size"
+        - name: "dinov3_base"
+          library: "transformers_cls"
+          model_id: "facebook/dinov3-vitb16-pretrain-lvd1689m"
+          description: "Self-supervised, Meta, newer generation"
+        - name: "clip_vit_large"
+          library: "transformers_clip"
+          model_id: "openai/clip-vit-large-patch14"
+          description: "Vision-language, OpenAI"
+        - name: "siglip2_so400m"
+          library: "transformers_clip"
+          model_id: "google/siglip2-so400m-patch14-384"
+          batch_size: 32
+          description: "Vision-language, Google"
+        - name: "pe_core_large"
+          library: "open_clip"
+          model_id: "PE-Core-L-14-336"
+          pretrained: "meta"
+          batch_size: 32
+          description: "Vision-language, Meta Perception Encoder"
+        - name: "vit_base_in21k"
+          library: "timm"
+          model_id: "vit_base_patch16_224.augreg_in21k"
+          description: "Supervised on ImageNet-21k labels"
+        - name: "bioclip2"
+          library: "open_clip"
+          model_id: "hf-hub:imageomics/bioclip-2"
+          batch_size: 32
+          description: "Vision-language, trained on species images (TreeOfLife)"
+
+# All 84 curated datasets with benchmark results. This list replaces the 20 datasets in shared.yaml.
+# Labels come from the benchmark run, so only settings that change which images load matter here:
+# hf_config_name and image_column. compound_label_columns is only used if a run has no labels.npy.
+datasets:
+    - name: "Project-AgML/ACHENY_variety_classification"
+    - name: "Project-AgML/AFruitDB_fruit_grade_classification"
+    - name: "Project-AgML/AgriVision4_disease_classification"
+      compound_label_columns: ["crop", "label"]
+    - name: "Project-AgML/BDHerbalPlants_variety_classification"
+    - name: "Project-AgML/BDMANGO_variety_classification"
+    - name: "Project-AgML/BDMediLeaves_variety_classification"
+    - name: "Project-AgML/BPLD_leaf_disease_classification"
+    - name: "Project-AgML/BananaImageBD_ripeness_classification"
+    - name: "Project-AgML/BananaImageBD_variety_classification"
+    - name: "Project-AgML/BananaLSD_leaf_disease_classification"
+    - name: "Project-AgML/Basmati_rice_seed_varitey_classification"
+    - name: "Project-AgML/BrinjalFruitX_disease_classification"
+    - name: "Project-AgML/COLD_chili_leaf_disease_classification"
+    - name: "Project-AgML/COLD_onion_leaf_disease_classification"
+    - name: "Project-AgML/CoLeaf_nutritional_deficiency_classification"
+    - name: "Project-AgML/DIMPSAR_medicinal_leaf_classification"
+    - name: "Project-AgML/DIMPSAR_medicinal_plant_classification"
+    - name: "Project-AgML/EfficientMaize_classification"
+    - name: "Project-AgML/FruitNet_quality_classification"
+    - name: "Project-AgML/FruitVision_quality_classification"
+      compound_label_columns: ["label", "fruit"]
+    - name: "Project-AgML/Hibiscus_Tea_disease_classification"
+    - name: "Project-AgML/ICPTC_pistachio_tree_variety_classification"
+    - name: "Project-AgML/african_plum_grading_classification"
+    - name: "Project-AgML/agarwood_leaf_disease_classification"
+    - name: "Project-AgML/apple_leaf_disease_classification"
+    - name: "Project-AgML/arabica_coffee_leaf_disease_classification"
+    - name: "Project-AgML/ash_gourd_disease_classification"
+    - name: "Project-AgML/bacterial_grain_rot_classification"
+    - name: "Project-AgML/banana_bunch_maturity_classification"
+    - name: "Project-AgML/banana_grade_variety_classification"
+    - name: "Project-AgML/banana_guava_quality_classification"
+    - name: "Project-AgML/banana_leaf_disease_classification"
+    - name: "Project-AgML/banana_leaf_nutrient_classification"
+    - name: "Project-AgML/banana_variety_classification"
+    - name: "Project-AgML/bay_leaf_disease_classification"
+    - name: "Project-AgML/bean_cowpea_leaf_disease_classification"
+    - name: "Project-AgML/bean_disease_uganda"
+    - name: "Project-AgML/betel_leaf_disease_classification"
+    - name: "Project-AgML/betel_leaf_disease_classification_2"
+    - name: "Project-AgML/black_gram_disease_classification"
+    - name: "Project-AgML/blackgram_plant_leaf_disease_classification"
+    - name: "Project-AgML/bruised_vegetable_classification"
+    - name: "Project-AgML/carambola_disease_classification"
+    - name: "Project-AgML/cauliflower_leaf_disease_classification"
+    - name: "Project-AgML/centella_asiatica_leaves"
+    - name: "Project-AgML/chitrak_leaf_disease_classification"
+    - name: "Project-AgML/citrus_fruit_leaf_disease_classification"
+    - name: "Project-AgML/citrus_fruit_variety_classification"
+    - name: "Project-AgML/citrusuat_disease_classification"
+    - name: "Project-AgML/coconut_tree_disease_classification"
+    - name: "Project-AgML/coffee_bean_quality_classification"
+    - name: "Project-AgML/corn_maize_leaf_disease"
+    - name: "Project-AgML/cotton_leaf_disease_classification"
+    - name: "Project-AgML/cotton_leaf_disease_classification_bangladesh_2"
+    - name: "Project-AgML/crop_weeds_greece"
+    - name: "Project-AgML/cucumber_disease_classification"
+    - name: "Project-AgML/custard_apple_disease_classification"
+    - name: "Project-AgML/date_grade_variety_classification"
+    - name: "Project-AgML/date_palm_leaf_disease_classification"
+    - name: "Project-AgML/date_palm_leaf_disease_classification_iraq"
+    - name: "Project-AgML/dragonfruit_disease_classification"
+    - name: "Project-AgML/dragonfruit_maturity_classification"
+    - name: "Project-AgML/dragonfruit_quality_classification"
+    - name: "Project-AgML/durian_disease_classification"
+    - name: "Project-AgML/durian_disease_classification_vietnam"
+    - name: "Project-AgML/eggplant_disease_classification"
+    - name: "Project-AgML/eggplant_leaf_disease_classification"
+    - name: "Project-AgML/fig_leaf_ficus_worm_classification"
+    - name: "Project-AgML/fresh_rotten_fruit_classification"
+      compound_label_columns: ["label", "fruit_type"]
+    - name: "Project-AgML/fruit_leaf_variety_classification"
+    - name: "Project-AgML/grape_leaf_disease_classification"
+    - name: "Project-AgML/grape_variety_classification"
+    - name: "Project-AgML/grapevine_development_stage_classification"
+    - name: "Project-AgML/grapevine_disease_classification"
+      compound_label_columns: ["label", "grape_variety"]
+    - name: "Project-AgML/grapevine_esca_classification"
+    - name: "Project-AgML/greenhouse_crop_weed_classification"
+    - name: "Project-AgML/groundnut_leaf_disease_classification"
+    - name: "Project-AgML/groundnut_leaf_disease_classification_2"
+    - name: "Project-AgML/guava_disease_classification"
+    - name: "Project-AgML/guava_disease_classification_bangladesh"
+    - name: "Project-AgML/guava_disease_pakistan"
+    - name: "Project-AgML/guava_maturity_classification"
+    - name: "Project-AgML/hog_plum_leaf_disease_classification"
+    - name: "Project-AgML/watermelon_disease_classification"
+      hf_config_name: "raw"

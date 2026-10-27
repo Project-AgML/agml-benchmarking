@@ -194,11 +194,8 @@ pip-selfcheck.json
 .claude/
 .agml-benchmarking/
 .personal/*
-.reasoning/
 
-# Program generated files
-benchmark/logs
-benchmark_results/
+# Results
 results/
 
 # CLAUDE Context 

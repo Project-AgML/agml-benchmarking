@@ -3,7 +3,7 @@ Encoder sensitivity: recompute every embedding-based benchmark metric with sever
 image encoders to see how much the metrics depend on the encoder.
 
 Labels, class names and splits come from the benchmark run of each dataset
-(benchmark_outputs/<dataset>/<run>/embeddings/labels.npy), so every encoder is scored
+(benchmark/results/<dataset>/<run>/embeddings/labels.npy), so every encoder is scored
 on exactly the same images, labels and splits as the benchmark.
 
 Usage (from repo root):
@@ -25,15 +25,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import yaml
 
-from benchmark.core.dataset_adapter import DatasetSchema
-from benchmark.core.split_manager import SplitManager
-from benchmark.metrics.annotation import LabelNoiseMetric
-from benchmark.metrics.difficulty import FeatureSeparabilityMetric
-from benchmark.metrics.diversity import IntraClassDiversityMetric
-from benchmark.metrics.structural import NearDuplicateMetric
-from experiments.common import DatasetEntry, load_dataset_with_schema, load_experiment_config, parse_dataset_entries
+from core.data import DatasetSchema, SplitManager
+from core.metrics.annotation import LabelNoiseMetric
+from core.metrics.difficulty import FeatureSeparabilityMetric
+from core.metrics.diversity import IntraClassDiversityMetric
+from core.metrics.structural import NearDuplicateMetric
+from experiments.common import (
+	DatasetEntry,
+	download_dataset,
+	load_dataset_with_schema,
+	load_experiment_config,
+	parse_dataset_entries,
+	resolve_repo_path,
+)
 from experiments.common.output_files import write_json
 from experiments.pipelines.encoder_sensitivity.encoders import (
 	EncoderSpec,
@@ -43,7 +48,6 @@ from experiments.pipelines.encoder_sensitivity.encoders import (
 	parse_encoder_specs,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def log(message: str = "") -> None:
@@ -56,7 +60,7 @@ def timestamp() -> str:
 
 def parse_arguments() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Encoder sensitivity: benchmark metrics under different encoders")
-	parser.add_argument("--config", default=None, help="Path to config.yaml (defaults to experiments/config.yaml)")
+	parser.add_argument("--config", default=None, help="Path to this experiment's config.yaml (defaults to experiments/slurm/encoder_sensitivity/config.yaml)")
 	parser.add_argument("--datasets", default=None, help="Comma separated dataset names to run (full or short names)")
 	parser.add_argument("--encoders", default=None, help="Comma separated encoder names from encoder_sensitivity.encoders")
 	parser.add_argument("--prefetch-only", action="store_true", help="Download datasets and encoder weights, then exit")
@@ -68,17 +72,6 @@ def split_comma_list(raw_value: Optional[str]) -> Optional[List[str]]:
 	if not raw_value:
 		return None
 	return [value.strip() for value in raw_value.split(",") if value.strip()]
-
-
-def load_dataset_registry(experiment_config: Dict[str, Any], selected_names: Optional[List[str]]) -> List[DatasetEntry]:
-	settings = experiment_config["encoder_sensitivity"]
-	registry_path = Path(settings["dataset_list"])
-	if not registry_path.is_absolute():
-		registry_path = REPO_ROOT / registry_path
-	with open(registry_path) as registry_file:
-		registry = yaml.safe_load(registry_file)
-	registry_config = {"dataset_defaults": experiment_config.get("dataset_defaults"), "datasets": registry["datasets"]}
-	return parse_dataset_entries(registry_config, selected_names)
 
 
 def select_encoders(experiment_config: Dict[str, Any], selected_names: Optional[List[str]]) -> List[EncoderSpec]:
@@ -152,7 +145,7 @@ class PreparedImages:
 			val_ratio=split_settings["val_ratio"],
 			seed=split_settings["seed"],
 		)
-		train_indices, val_indices, test_indices = split_manager._compute_indices(self.labels, len(self.labels))
+		train_indices, val_indices, test_indices = split_manager.compute_indices(self.labels)
 		self.split_indices = {"train": set(train_indices.tolist()), "val": set(val_indices.tolist()), "test": set(test_indices.tolist())}
 
 	def benchmark_embeddings(self) -> Optional[np.ndarray]:
@@ -281,7 +274,7 @@ def run_one(
 def prefetch(dataset_entries: List[DatasetEntry], encoder_specs: List[EncoderSpec]) -> None:
 	for entry in dataset_entries:
 		log(f"Downloading dataset {entry.name}")
-		load_dataset_with_schema(entry)
+		download_dataset(entry)
 	for spec in encoder_specs:
 		log(f"Downloading weights for {spec.name} ({spec.model_id})")
 		download_encoder_weights(spec)
@@ -309,14 +302,14 @@ def smoke_test(dataset_entries: List[DatasetEntry], encoder_specs: List[EncoderS
 
 def main() -> None:
 	arguments = parse_arguments()
-	experiment_config = load_experiment_config(arguments.config)
+	experiment_config = load_experiment_config("encoder_sensitivity", arguments.config)
 	settings = experiment_config["encoder_sensitivity"]
 	split_settings = experiment_config["shared"]["split"]
 	workers = int(experiment_config["shared"].get("dataloader_workers", 4))
-	benchmark_results_root = Path(settings["benchmark_results_root"]).expanduser()
+	benchmark_results_root = resolve_repo_path(settings["benchmark_results_root"])
 	output_root = Path(experiment_config["shared"]["output_root"]) / settings["experiment_name"]
 
-	dataset_entries = load_dataset_registry(experiment_config, split_comma_list(arguments.datasets))
+	dataset_entries = parse_dataset_entries(experiment_config, split_comma_list(arguments.datasets))
 	encoder_specs = select_encoders(experiment_config, split_comma_list(arguments.encoders))
 
 	if arguments.prefetch_only:

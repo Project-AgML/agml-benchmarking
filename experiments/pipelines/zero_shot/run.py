@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from experiments.common import (
 	PreparedDataset,
-	load_dataset_with_schema,
+	download_dataset,
 	load_experiment_config,
 	parse_dataset_entries,
 	prepare_dataset,
@@ -47,7 +47,7 @@ def timestamp() -> str:
 
 def parse_arguments() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Experiment 2: zero-shot performance")
-	parser.add_argument("--config", default=None, help="Path to config.yaml (defaults to experiments/config.yaml)")
+	parser.add_argument("--config", default=None, help="Path to this experiment's config.yaml (defaults to experiments/slurm/zero_shot/config.yaml)")
 	parser.add_argument("--datasets", default=None, help="Comma separated dataset names to run (full or short names)")
 	parser.add_argument("--models", default=None, help="Comma separated model names from zero_shot.models")
 	parser.add_argument("--prefetch-only", action="store_true", help="Download datasets and weights, then exit")
@@ -154,13 +154,13 @@ def prefetch_everything(dataset_entries, model_settings_list) -> None:
 		snapshot_download(model_settings["model_id"])
 	for dataset_entry in dataset_entries:
 		log(f"Caching dataset {dataset_entry.name}")
-		load_dataset_with_schema(dataset_entry)
+		download_dataset(dataset_entry)
 	log("Prefetch complete.")
 
 
 def main() -> None:
 	arguments = parse_arguments()
-	experiment_config = load_experiment_config(arguments.config)
+	experiment_config = load_experiment_config("zero_shot", arguments.config)
 	shared_settings = experiment_config["shared"]
 	zero_shot_settings = experiment_config["zero_shot"]
 

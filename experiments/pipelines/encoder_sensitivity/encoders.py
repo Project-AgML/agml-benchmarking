@@ -103,7 +103,7 @@ class ImageEncoder:
 
 
 class TransformersClsEncoder(ImageEncoder):
-	"""Same extraction as benchmark/core/embedding_engine.py: CLS token of last_hidden_state."""
+	"""Same extraction as benchmark/components/embedding_engine.py: CLS token of last_hidden_state."""
 
 	def load(self) -> None:
 		from transformers import AutoImageProcessor, AutoModel

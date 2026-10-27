@@ -1,4 +1,4 @@
-"""Reads the shared experiments/config.yaml used by Experiment 1 and Experiment 2."""
+"""Reads experiments/slurm/shared.yaml and merges in one experiment's experiments/slurm/<experiment>/config.yaml."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SLURM_FOLDER = REPO_ROOT / "experiments" / "slurm"
+SHARED_CONFIG_PATH = SLURM_FOLDER / "shared.yaml"
 
 
 @dataclass
@@ -26,14 +28,26 @@ class DatasetEntry:
 		return self.name.split("/")[-1]
 
 
-def load_experiment_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
-	resolved_path = Path(os.path.expandvars(os.path.expanduser(str(config_path or DEFAULT_CONFIG_PATH))))
-	with open(resolved_path) as config_file:
-		experiment_config = yaml.safe_load(config_file)
-	experiment_config["shared"]["output_root"] = os.path.expandvars(
-		os.path.expanduser(experiment_config["shared"]["output_root"])
-	)
+def read_yaml(path: Path) -> Dict[str, Any]:
+	with open(path) as yaml_file:
+		return yaml.safe_load(yaml_file) or {}
+
+
+def load_experiment_config(experiment_name: str, config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
+	"""Shared settings and datasets from shared.yaml, plus the experiment's config.yaml. Top-level keys in the
+	experiment's file (its own section, or a datasets list of its own) replace the shared ones."""
+	experiment_path = resolve_repo_path(config_path) if config_path else SLURM_FOLDER / experiment_name / "config.yaml"
+	experiment_config = {**read_yaml(SHARED_CONFIG_PATH), **read_yaml(experiment_path)}
+	if experiment_name not in experiment_config:
+		raise KeyError(f"{experiment_path} has no '{experiment_name}' section")
+	experiment_config["shared"]["output_root"] = str(resolve_repo_path(experiment_config["shared"]["output_root"]))
 	return experiment_config
+
+
+def resolve_repo_path(raw_path: Union[str, Path]) -> Path:
+	"""Expands ~ and $VARS. Relative paths are taken from the repo root, so the working directory never matters."""
+	path = Path(os.path.expandvars(os.path.expanduser(str(raw_path))))
+	return path if path.is_absolute() else REPO_ROOT / path
 
 
 def parse_dataset_entries(
@@ -65,5 +79,5 @@ def parse_dataset_entries(
 	known_names = {entry.name for entry in dataset_entries} | {entry.short_name for entry in dataset_entries}
 	unknown_names = wanted_names - known_names
 	if unknown_names:
-		raise ValueError(f"Datasets not found in config.yaml: {sorted(unknown_names)}")
+		raise ValueError(f"Datasets not found in the dataset list: {sorted(unknown_names)}")
 	return selected_entries

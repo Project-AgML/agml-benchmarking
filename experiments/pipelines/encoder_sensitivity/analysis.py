@@ -6,7 +6,7 @@ Usage (from repo root, after run.py):
 	uv run python -m experiments.pipelines.encoder_sensitivity.analysis
 
 Writes CSV tables and report.md to <output_root>/encoder_sensitivity/analysis and
-figures to encoder_sensitivity.analysis.figure_folder. All settings come from experiments/config.yaml.
+figures to encoder_sensitivity.analysis.figure_folder. All settings come from experiments/slurm/encoder_sensitivity/config.yaml.
 """
 
 from __future__ import annotations
@@ -20,9 +20,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from experiments.common import load_experiment_config
+from experiments.common import load_experiment_config, resolve_repo_path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
 # (column, label, higher_is_better)
 METRICS = [
 	("silhouette", "Silhouette score", True),
@@ -41,7 +40,7 @@ METRICS = [
 
 def parse_arguments() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Analyse the encoder sensitivity results")
-	parser.add_argument("--config", default=None, help="Path to config.yaml (defaults to experiments/config.yaml)")
+	parser.add_argument("--config", default=None, help="Path to this experiment's config.yaml (defaults to experiments/slurm/encoder_sensitivity/config.yaml)")
 	return parser.parse_args()
 
 
@@ -309,7 +308,7 @@ def write_report(summary: pd.DataFrame, overlap: pd.DataFrame, predictive: pd.Da
 
 def main() -> None:
 	arguments = parse_arguments()
-	experiment_config = load_experiment_config(arguments.config)
+	experiment_config = load_experiment_config("encoder_sensitivity", arguments.config)
 	results_root = Path(experiment_config["shared"]["output_root"])
 	comparison_root = results_root / experiment_config["encoder_sensitivity"]["experiment_name"]
 	analysis_folder = comparison_root / "analysis"
@@ -337,9 +336,7 @@ def main() -> None:
 	overlap.to_csv(analysis_folder / "label_noise_flag_overlap.csv", index=False)
 	predictive.to_csv(analysis_folder / "correlation_with_performance.csv", index=False)
 	write_report(summary, overlap, predictive, values, encoders, analysis_folder, baseline_encoder, analysis_settings)
-	figure_folder = Path(analysis_settings["figure_folder"])
-	if not figure_folder.is_absolute():
-		figure_folder = REPO_ROOT / figure_folder
+	figure_folder = resolve_repo_path(analysis_settings["figure_folder"])
 	draw_figures(pairs, predictive, encoders, figure_folder, analysis_settings["heatmap_metrics"])
 
 	print(summary[["label", "mean_pairwise_spearman", "min_pairwise_spearman", "verdict"]].round(2).to_string(index=False))

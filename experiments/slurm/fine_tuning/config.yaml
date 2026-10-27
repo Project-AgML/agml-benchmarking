@@ -1,0 +1,32 @@
+# fine_tuning settings. Merged with experiments/slurm/shared.yaml at load time.
+# YAML does not allow tabs, so this file uses 4 spaces per level.
+# Relative paths are resolved from the repo root.
+
+fine_tuning:
+    experiment_name: "fine_tuning"
+    image_size: 224
+    batch_size: 64
+    max_epochs: 50
+    early_stopping_patience: 10
+    early_stopping_min_delta: 0.0
+    learning_rate: 5.0e-5
+    weight_decay: 0.05
+    warmup_epochs: 2
+    gradient_clip_norm: 1.0
+    mixed_precision: true
+    save_best_checkpoint: false
+    skip_completed_runs: true
+    augmentation:
+        horizontal_flip_probability: 0.5
+        random_crop_scale: [0.8, 1.0]
+        color_jitter:
+            brightness: 0.2
+            contrast: 0.2
+            saturation: 0.2
+            hue: 0.02
+    # Any key above (learning_rate, batch_size, ...) can be overridden per model
+    models:
+        - name: "vit_small"
+          timm_model: "vit_small_patch16_224.augreg_in21k_ft_in1k"
+        - name: "dinov2_small"
+          timm_model: "vit_small_patch14_dinov2.lvd142m"

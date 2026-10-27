@@ -1,3 +1,3 @@
-from .app import AgMLBenchmarkPipeline
+from .pipeline import AgMLBenchmarkPipeline
 
 __all__ = ["AgMLBenchmarkPipeline"]
