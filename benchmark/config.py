@@ -4,7 +4,11 @@ import dataclasses
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG_PATH = REPO_ROOT / "benchmark" / "slurm" / "config.json"
 
 
 @dataclass
@@ -21,13 +25,13 @@ class PipelineConfig:
     -----------------------------------------------
     1. ``PipelineConfig.from_json(path)`` — explicit path
     2. ``$AGML_CONFIG`` environment variable pointing to a JSON file
-    3. ``benchmark/config.json`` in the current working directory
+    3. ``benchmark/slurm/config.json``
     4. Built-in defaults (no file required)
 
     Use :py:meth:`load` to auto-discover::
 
         cfg = PipelineConfig.load()          # auto-discovers
-        cfg = PipelineConfig.load("benchmark/configs/farm.json")  # explicit
+        cfg = PipelineConfig.load("benchmark/slurm/config.json")  # explicit
 
     Save the exact settings used in a run for reproducibility::
 
@@ -44,9 +48,9 @@ class PipelineConfig:
     # test_ratio is implicit: 1.0 − train_ratio − val_ratio
 
     # ── Output ─────────────────────────────────────────────────────────────────
-    output_dir: str = "results"
-    """Root directory for all run artefacts.  On FARM point this to group
-    storage, e.g. /group/jmearlesgrp/$USER/benchmark_results."""
+    output_dir: str = "benchmark/results"
+    """Root directory for all run artefacts.  Relative paths are resolved
+    against the repo root, so results always land in benchmark/results."""
 
     # ── Phase 2 — embeddings ───────────────────────────────────────────────────
     embed_model: str = "facebook/dinov2-base"
@@ -94,6 +98,9 @@ class PipelineConfig:
 
     # ── Validation ─────────────────────────────────────────────────────────────
     def __post_init__(self) -> None:
+        output_path = Path(os.path.expandvars(os.path.expanduser(self.output_dir)))
+        self.output_dir = str(output_path if output_path.is_absolute() else REPO_ROOT / output_path)
+
         total = self.train_ratio + self.val_ratio
         if total >= 1.0:
             raise ValueError(
@@ -111,20 +118,20 @@ class PipelineConfig:
         Precedence:
         1. ``path`` argument (explicit override)
         2. ``$AGML_CONFIG`` environment variable
-        3. ``benchmark/config.json`` relative to the current working directory
+        3. ``benchmark/slurm/config.json``
         4. All defaults (no file required)
 
         Example — typical SLURM job::
 
             # In the .sbatch script:
-            #   export AGML_CONFIG=/group/jmearlesgrp/$USER/configs/farm.json
+            #   export AGML_CONFIG=/path/to/config.json
             cfg = PipelineConfig.load()   # picks up $AGML_CONFIG automatically
         """
         resolved = path
         if resolved is None:
             resolved = os.environ.get("AGML_CONFIG")
-        if resolved is None and os.path.exists("benchmark/config.json"):
-            resolved = "benchmark/config.json"
+        if resolved is None and DEFAULT_CONFIG_PATH.exists():
+            resolved = str(DEFAULT_CONFIG_PATH)
         if resolved is not None:
             return cls.from_json(resolved)
         return cls()

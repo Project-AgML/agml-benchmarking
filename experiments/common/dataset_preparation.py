@@ -11,8 +11,7 @@ from typing import Any, Callable, Dict, Tuple
 import numpy as np
 from datasets import Dataset
 
-from benchmark.core.dataset_adapter import DatasetAdapter, DatasetSchema
-from benchmark.core.split_manager import SplitManager, SplitResult
+from core.data import DatasetAdapter, DatasetSchema, SplitManager, SplitResult
 from experiments.common.config_loader import DatasetEntry
 
 
@@ -35,6 +34,11 @@ class PreparedDataset:
 			"val": len(self.splits.val),
 			"test": len(self.splits.test),
 		}
+
+
+def download_dataset(dataset_entry: DatasetEntry) -> None:
+	"""Prefetch: only puts the raw dataset in the cache. No label handling and no splits."""
+	DatasetAdapter(dataset_name=dataset_entry.name, config_name=dataset_entry.hf_config_name).download()
 
 
 def load_dataset_with_schema(dataset_entry: DatasetEntry) -> Tuple[Dataset, DatasetSchema]:
@@ -65,7 +69,7 @@ def prepare_dataset(
 	# That step rewrites the selected images into a new Arrow table and overflows the
 	# 2GB binary limit on datasets with large images. select() alone is a lazy index map.
 	labels = np.array(full_dataset[schema.label_col])
-	train_indices, val_indices, test_indices = split_manager._compute_indices(labels, len(labels))
+	train_indices, val_indices, test_indices = split_manager.compute_indices(labels)
 	splits = SplitResult(
 		full=full_dataset,
 		train=full_dataset.select(train_indices),

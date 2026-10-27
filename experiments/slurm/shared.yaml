@@ -1,0 +1,47 @@
+# Settings shared by every experiment, plus the 20 evaluation datasets used by fine-tuning and zero-shot.
+# Each experiment adds its own section from experiments/slurm/<experiment>/config.yaml,
+# which can also replace the datasets list with its own.
+# YAML does not allow tabs, so this file uses 4 spaces per level.
+# Relative paths are resolved from the repo root.
+
+shared:
+    output_root: experiments/results
+    training_seed: 42
+    dataloader_workers: 8
+    # Must match benchmark/slurm/config.json so test splits line up with the quality scores
+    split:
+        seed: 42
+        train_ratio: 0.70
+        val_ratio: 0.15
+
+dataset_defaults:
+    label_column: "label"
+    image_column: "image"
+    hf_config_name: ""
+    compound_label_columns: []
+
+datasets:
+    - name: "Project-AgML/banana_leaf_nutrient_classification"
+    - name: "Project-AgML/AgriVision4_disease_classification"
+      compound_label_columns: ["crop", "label"]
+    - name: "Project-AgML/CoLeaf_nutritional_deficiency_classification"
+    - name: "Project-AgML/eggplant_disease_classification"
+    - name: "Project-AgML/grapevine_disease_classification"
+      compound_label_columns: ["label", "grape_variety"]
+    - name: "Project-AgML/bacterial_grain_rot_classification"
+    - name: "Project-AgML/DIMPSAR_medicinal_leaf_classification"
+    - name: "Project-AgML/cotton_leaf_disease_classification"
+    - name: "Project-AgML/COLD_chili_leaf_disease_classification"
+    - name: "Project-AgML/guava_disease_pakistan"
+    - name: "Project-AgML/FruitVision_quality_classification"
+      compound_label_columns: ["label", "fruit"]
+    - name: "Project-AgML/durian_disease_classification"
+    - name: "Project-AgML/corn_maize_leaf_disease"
+    - name: "Project-AgML/banana_variety_classification"
+    - name: "Project-AgML/fig_leaf_ficus_worm_classification"
+    - name: "Project-AgML/BDMediLeaves_variety_classification"
+    - name: "Project-AgML/greenhouse_crop_weed_classification"
+    - name: "Project-AgML/fresh_rotten_fruit_classification"
+      compound_label_columns: ["label", "fruit_type"]
+    - name: "Project-AgML/bean_disease_uganda"
+    - name: "Project-AgML/grapevine_esca_classification"
